@@ -1,0 +1,15 @@
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Data
+data/raw/
+results/raw_cv_results/
+results/analyzed_cv_results/
+# keep empty dirs:
+!.gitkeep
+
+# Notebooks
+notebooks/
+*.ipynb_checkpoints/

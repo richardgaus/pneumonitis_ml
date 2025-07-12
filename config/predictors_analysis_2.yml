@@ -1,0 +1,64 @@
+# created June 26, 2025
+
+name: analysis_2
+
+description: >
+  Analysis two is for clinical parameters, target volume, and plan evaluation metrics
+
+candidate_predictors:
+  - age_sbrt:
+      col_name: "Age_SBRT"
+      type: continuous
+  
+  - sex:
+      col_name: "Sex (0 = F, 1 = M)"
+      type: binary
+  
+  - smoker:
+      col_name: "Former_or_current_smoker"
+      type: binary
+  
+  - lower_lobe:
+      col_name: "lower lobe =1, others =0"
+      type: binary
+  
+  - peri_rt_systemic_therapy:
+      col_name: "peri-RT Systemic_therapy_prior_RT (3M)_yes_1_no_0"
+      type: binary
+  
+  - cci_score:
+      col_name: "CCI score"
+      type: continuous
+  
+  - baseline_fev1:
+      col_name: "Baseline_FEV1 [L]"
+      type: continuous
+  
+  - baseline_dlco:
+      col_name: "Baseline_DLCOcSB [%] "
+      type: continuous
+  
+  - ptv_volume:
+      col_name: "V(PTV) [cc]"
+      type: continuous
+  
+  - ci50_gi:
+      col_name: "CI50(GI)"
+      type: continuous
+  
+  - ci100:
+      col_name: "CI100"
+      type: continuous
+  
+  - d2cm:
+      col_name: "D2cm (%)"
+      type: continuous
+      
+endpoint: "Pneumonitis G0-1=0, G>/=2=1"
+
+# Da bei einigen Patienten mehrere Läsionen zeitgleich behandelt wurden, kommen
+# diese untereinander mehrfach vor (Bsp. Zeilen 40+41 Pat Nr. 033.1), aber die
+# PTV/GTV-Volumina (Spalten G-H) und PTV Daten (Spalten S-X) sind
+# unterschiedlich. Daher gibt es auf der dosimetric_data Seite mehr Einträge
+# als auf der clinical_data Seite (CI/GI waren in bei diesen Pat in den meisten
+# Fällen nicht zu erheben, daher sind die Spalten I-R in diesen Fällen leer.)

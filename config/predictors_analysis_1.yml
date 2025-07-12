@@ -1,0 +1,61 @@
+# created June 26, 2025
+
+name: analysis_1
+
+description: >
+  Analysis 1 is for clinical and lung dosimetric parameters
+
+candidate_predictors:
+  - age_sbrt:
+      col_name: "Age_SBRT"
+      type: continuous
+  
+  - sex:
+      col_name: "Sex (0 = F, 1 = M)"
+      type: binary
+  
+  - smoker:
+      col_name: "Former_or_current_smoker"
+      type: binary
+  
+  - lower_lobe:
+      col_name: "lower lobe =1, others =0"
+      type: binary
+  
+  - peri_rt_systemic_therapy:
+      col_name: "peri-RT Systemic_therapy_prior_RT (3M)_yes_1_no_0"
+      type: binary
+  
+  - cci_score:
+      col_name: "CCI score"
+      type: continuous
+  
+  - baseline_fev1:
+      col_name: "Baseline_FEV1 [L]"
+      type: continuous
+  
+  - baseline_dlco:
+      col_name: "Baseline_DLCOcSB [%] "
+      type: continuous
+  
+  - ptv_volume:
+      col_name: "V(PTV1) [cc]"
+      type: continuous
+  
+  - lung_v5:
+      col_name: "total_lung_V_5Gy_(%)"
+      type: continuous
+  
+  - lung_v10:
+      col_name: "total_lung_V_10Gy_(%)"
+      type: continuous
+  
+  - lung_v20:
+      col_name: "total_lung_V_20Gy_(%)"
+      type: continuous
+  
+  - lung_dmean:
+      col_name: "total_lung_Dmean_[Gy]_(EQD2)"
+      type: continuous
+      
+endpoint: "Pneumonitis G0-1=0, G>/=2=1"
