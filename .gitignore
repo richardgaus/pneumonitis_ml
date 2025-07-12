@@ -5,6 +5,7 @@ __pycache__/
 
 # Data
 data/raw/
+data/processed/
 results/raw_cv_results/
 results/analyzed_cv_results/
 # keep empty dirs:
