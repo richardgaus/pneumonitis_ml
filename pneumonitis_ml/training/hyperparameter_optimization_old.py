@@ -1,12 +1,12 @@
 from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 import numpy as np
 
-def hyperparameter_optimization(X_train, y_train, groups_train, selected_features,
-                               model_factory, param_grid, n_splits=3, n_repeats=5, 
-                               random_state=42, verbose=True):
+def hyperparameter_optimization(X_train, y_train, groups_train, selected_features, 
+                               lambda_values=None, n_splits=3, n_repeats=5, random_state=42, verbose=True):
     """
-    Perform model-agnostic hyperparameter optimization using repeated inner cross-validation.
+    Perform hyperparameter optimization using repeated inner cross-validation with patient-level splits.
     
     Parameters:
     -----------
@@ -18,12 +18,8 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
         Patient IDs for ensuring patient-level splits
     selected_features : array-like
         List of selected feature names to use
-    model_factory : callable
-        Function that takes **params and returns a model instance
-        Example: lambda **params: LogisticRegression(random_state=42, **params)
-    param_grid : dict
-        Dictionary mapping parameter names to lists of values to test
-        Example: {'C': [0.001, 0.01, 0.1, 1, 10]}
+    lambda_values : list, default None
+        List of regularization parameters to test. If None, uses [0.001, 0.01, 0.1, 1, 10]
     n_splits : int, default 3
         Number of inner CV folds
     n_repeats : int, default 5
@@ -37,11 +33,14 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
     --------
     dict
         Dictionary containing:
-        - 'best_params': best parameter combination
+        - 'best_lambda': best regularization parameter
         - 'best_score': best mean AUROC score
-        - 'all_scores': dict with param_combo -> mean_auroc mapping
-        - 'cv_details': detailed results for each parameter combination
+        - 'all_scores': dict with lambda -> mean_auroc mapping
+        - 'cv_details': detailed results for each lambda, repeat, and fold
     """
+    
+    if lambda_values is None:
+        lambda_values = [0.001, 0.01, 0.1, 1, 10]
     
     # Filter to selected features only
     if len(selected_features) == 0:
@@ -49,26 +48,22 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
     
     X_train_selected = X_train[selected_features]
     
-    # Generate all parameter combinations
-    param_combinations = _generate_param_combinations(param_grid)
-    
     if verbose:
         print(f"    Hyperparameter optimization:")
         print(f"      Features: {len(selected_features)}")
-        print(f"      Parameter combinations: {len(param_combinations)}")
+        print(f"      Lambda values: {lambda_values}")
         print(f"      Inner CV: {n_repeats}x{n_splits}-fold")
     
     # Initialize results storage
-    param_scores = {}
+    lambda_scores = {}
     cv_details = {}
     
-    for param_combo in param_combinations:
+    for lambda_val in lambda_values:
         all_fold_scores = []
-        combo_key = str(param_combo)
-        cv_details[combo_key] = []
+        cv_details[lambda_val] = []
         
         if verbose:
-            print(f"      Testing {param_combo}...")
+            print(f"      Testing λ = {lambda_val}...")
         
         # Repeated inner cross-validation
         for repeat in range(n_repeats):
@@ -96,11 +91,18 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
                         print(f"        Repeat {repeat + 1}, Fold {inner_fold + 1}: Skipping - only one class in training")
                     continue
                 
+                # Fit Ridge Logistic Regression (L2 penalty)
+                # Note: C = 1/lambda in sklearn
+                safe_lambda = max(lambda_val, 1e-6)
+                model = LogisticRegression(
+                    penalty='l2',
+                    C=1/safe_lambda,
+                    solver='lbfgs',
+                    max_iter=1000,
+                    random_state=random_state
+                )
+                
                 try:
-                    # Create model with current parameter combination
-                    model = model_factory(**param_combo)
-                    
-                    # Fit model
                     model.fit(X_inner_train, y_inner_train)
                     
                     # Predict probabilities for AUROC calculation
@@ -110,7 +112,7 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
                     auroc = roc_auc_score(y_inner_valid, y_pred_proba)
                     all_fold_scores.append(auroc)
                     
-                    cv_details[combo_key].append({
+                    cv_details[lambda_val].append({
                         'repeat': repeat + 1,
                         'fold': inner_fold + 1,
                         'auroc': auroc,
@@ -129,48 +131,32 @@ def hyperparameter_optimization(X_train, y_train, groups_train, selected_feature
                         print(f"        Repeat {repeat + 1}, Fold {inner_fold + 1}: Failed - {e}")
                     continue
         
-        # Calculate mean AUROC for this parameter combination
+        # Calculate mean AUROC for this lambda across all repeats and folds
         if len(all_fold_scores) > 0:
             mean_auroc = np.mean(all_fold_scores)
-            param_scores[combo_key] = mean_auroc
+            lambda_scores[lambda_val] = mean_auroc
             
             if verbose:
                 print(f"        Mean AUROC: {mean_auroc:.4f} ± {np.std(all_fold_scores):.4f} "
                       f"({len(all_fold_scores)} folds)")
         else:
-            param_scores[combo_key] = 0.0
+            lambda_scores[lambda_val] = 0.0
             if verbose:
                 print(f"        Mean AUROC: No valid folds")
     
-    # Find best parameter combination
-    if len(param_scores) == 0:
+    # Find best lambda
+    if len(lambda_scores) == 0:
         raise RuntimeError("No valid hyperparameter evaluations completed")
     
-    best_combo_key = max(param_scores.keys(), key=lambda k: param_scores[k])
-    best_score = param_scores[best_combo_key]
-    best_params = eval(best_combo_key)  # Convert string back to dict
+    best_lambda = max(lambda_scores.keys(), key=lambda k: lambda_scores[k])
+    best_score = lambda_scores[best_lambda]
     
     if verbose:
-        print(f"      Best params: {best_params} (AUROC = {best_score:.4f})")
+        print(f"      Best λ = {best_lambda} (AUROC = {best_score:.4f})")
     
     return {
-        'best_params': best_params,
+        'best_lambda': best_lambda,
         'best_score': best_score,
-        'all_scores': param_scores,
+        'all_scores': lambda_scores,
         'cv_details': cv_details
     }
-
-
-def _generate_param_combinations(param_grid):
-    """Generate all combinations of parameters from a parameter grid."""
-    import itertools
-    
-    param_names = list(param_grid.keys())
-    param_values = list(param_grid.values())
-    
-    combinations = []
-    for combination in itertools.product(*param_values):
-        param_dict = dict(zip(param_names, combination))
-        combinations.append(param_dict)
-    
-    return combinations

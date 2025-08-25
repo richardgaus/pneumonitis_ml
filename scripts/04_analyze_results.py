@@ -233,12 +233,21 @@ Examples:
         print(f"AUPRC: {perf['auprc']['mean']:.3f} (95% CI: {perf['auprc']['ci_lower']:.3f}-{perf['auprc']['ci_upper']:.3f})")
         
         cm = results['classification_metrics']
-        print(f"Threshold: {cm['threshold']:.3f} ({cm['threshold_method']})")
-        print(f"Youden Score: {cm['youden_score']:.3f}")
-        print(f"Sensitivity: {cm['sensitivity']:.3f}")
-        print(f"Specificity: {cm['specificity']:.3f}")
-        print(f"PPV: {cm['ppv']:.3f}")
-        print(f"NPV: {cm['npv']:.3f}")
+        print(f"Threshold  : {cm['threshold']:.3f} ({cm['threshold_method']})")
+        print(f"Youden J   : {cm['youden_score']:.3f}")
+        print(f"Sensitivity: {cm['sensitivity']['mean']:.3f} "
+            f"(95 % CI {cm['sensitivity']['ci_lower']:.3f}"
+            f"–{cm['sensitivity']['ci_upper']:.3f})")
+        print(f"Specificity: {cm['specificity']['mean']:.3f} "
+            f"(95 % CI {cm['specificity']['ci_lower']:.3f}"
+            f"–{cm['specificity']['ci_upper']:.3f})")
+        print(f"PPV        : {cm['ppv']['mean']:.3f} "
+            f"(95 % CI {cm['ppv']['ci_lower']:.3f}"
+            f"–{cm['ppv']['ci_upper']:.3f})")
+        print(f"NPV        : {cm['npv']['mean']:.3f} "
+            f"(95 % CI {cm['npv']['ci_lower']:.3f}"
+            f"–{cm['npv']['ci_upper']:.3f})")
+
         
         if 'feature_selection' in results:
             fold_stats = results['fold_analysis']['summary_stats']

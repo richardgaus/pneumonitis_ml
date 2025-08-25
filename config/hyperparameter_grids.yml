@@ -1,0 +1,45 @@
+# Hyperparameter grids for different models
+# Created: January 2025
+
+description: >
+  Hyperparameter grids for cross-validation optimization.
+  Each model type has a parameter grid defining the search space
+  for hyperparameter optimization.
+
+models:
+  logistic-regression:
+    description: "Logistic regression with L2 regularization"
+    parameters:
+      C:
+        description: "Inverse of regularization strength (1/lambda)"
+        values: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+        type: "float"
+        
+  random-forest:
+    description: "Random forest classifier"
+    parameters:
+      max_depth:
+        description: "Maximum depth of trees"
+        values: [2, 3, 4]
+        type: "int"
+      min_samples_leaf:
+        description: "Minimum number of samples required to be at a leaf node"
+        values: [3, 5, 10]
+        type: "int"
+      max_features:
+        description: "Number of features to consider when looking for the best split"
+        values: ["sqrt", 0.5, None]
+        type: "mixed"
+
+# Future models can be added here:
+# svm:
+#   description: "Support vector machine"
+#   parameters:
+#     C:
+#       description: "Regularization parameter"
+#       values: [0.1, 1.0, 10.0]
+#       type: "float"
+#     gamma:
+#       description: "Kernel coefficient"
+#       values: ["scale", "auto", 0.001, 0.01, 0.1]
+#       type: "mixed"

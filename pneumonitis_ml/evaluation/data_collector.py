@@ -158,7 +158,7 @@ class CVDataCollector:
                 'feature_index': i
             })
     
-    def record_hyperparameter_results(self, cv_id, best_lambda, best_score, all_scores):
+    def record_hyperparameter_results(self, cv_id, best_score, all_scores, best_params=None):
         """
         Record hyperparameter optimization results.
         
@@ -166,36 +166,51 @@ class CVDataCollector:
         -----------
         cv_id : str
             CV fold identifier
-        best_lambda : float
-            Best lambda value found
         best_score : float
             Best inner CV score
         all_scores : dict
-            All lambda values and their scores
+            All parameter combinations and their scores
+        best_params : dict, optional
+            Best parameter combination found
         """
         # Convert all_scores to JSON-serializable format
         json_scores = {}
         for key, value in all_scores.items():
-            if isinstance(key, (int, float)):
+            # Convert keys (parameter combinations) to strings
+            if isinstance(key, dict):
                 json_key = str(key)
             else:
-                json_key = key
+                json_key = str(key)
             
+            # Convert values
             if isinstance(value, (list, tuple)):
                 json_scores[json_key] = [float(x) for x in value]
             else:
                 json_scores[json_key] = float(value)
         
+        # Convert best_params to JSON-serializable format
+        json_best_params = {}
+        if best_params:
+            for key, value in best_params.items():
+                if isinstance(value, (np.integer, int)):
+                    json_best_params[key] = int(value)
+                elif isinstance(value, (np.floating, float)):
+                    json_best_params[key] = float(value)
+                elif value is None:
+                    json_best_params[key] = None
+                else:
+                    json_best_params[key] = str(value)
+        
         self._current_fold_info.update({
-            'best_lambda': float(best_lambda),
-            'best_inner_score': float(best_score),
-            'lambda_scores': json_scores
+            'best_score': float(best_score),
+            'best_params': json_best_params,
+            'param_scores': json_scores
         })
     
     def record_model_coefficients(self, cv_id, repeat_id, fold_id, model, 
                                  selected_features, numeric_cols, binary_cols):
         """
-        Record trained model coefficients.
+        Record trained model coefficients or feature importances.
         
         Parameters:
         -----------
@@ -206,7 +221,7 @@ class CVDataCollector:
         fold_id : int
             Fold number
         model : sklearn model
-            Trained logistic regression model
+            Trained model (LogisticRegression, RandomForest, etc.)
         selected_features : list
             Names of features used in model
         numeric_cols : list
@@ -214,29 +229,51 @@ class CVDataCollector:
         binary_cols : list
             Names of binary columns (for feature type annotation)
         """
-        # Store intercept
-        self.model_coefficients.append({
-            'cv_id': cv_id,
-            'repeat': repeat_id,
-            'fold': fold_id,
-            'feature_name': 'intercept',
-            'coefficient': float(model.intercept_[0]),  # Convert for JSON
-            'feature_type': 'intercept'
-        })
-        
-        # Store feature coefficients
-        coefficients = model.coef_[0]
-        for feature, coef in zip(selected_features, coefficients):
-            feature_type = 'continuous' if feature in numeric_cols else 'binary'
+        # Handle different model types
+        if hasattr(model, 'coef_'):
+            # Linear models (LogisticRegression, etc.)
+            # Store intercept if available
+            if hasattr(model, 'intercept_'):
+                self.model_coefficients.append({
+                    'cv_id': cv_id,
+                    'repeat': repeat_id,
+                    'fold': fold_id,
+                    'feature_name': 'intercept',
+                    'coefficient': float(model.intercept_[0]),  # Convert for JSON
+                    'feature_type': 'intercept'
+                })
             
-            self.model_coefficients.append({
-                'cv_id': cv_id,
-                'repeat': repeat_id,
-                'fold': fold_id,
-                'feature_name': feature,
-                'coefficient': float(coef),  # Convert for JSON
-                'feature_type': feature_type
-            })
+            # Store feature coefficients
+            coefficients = model.coef_[0] if len(model.coef_.shape) > 1 else model.coef_
+            for feature, coef in zip(selected_features, coefficients):
+                feature_type = 'continuous' if feature in numeric_cols else 'binary'
+                
+                self.model_coefficients.append({
+                    'cv_id': cv_id,
+                    'repeat': repeat_id,
+                    'fold': fold_id,
+                    'feature_name': feature,
+                    'coefficient': float(coef),  # Convert for JSON
+                    'feature_type': feature_type
+                })
+                
+        elif hasattr(model, 'feature_importances_'):
+            # Tree-based models (RandomForest, etc.)
+            importances = model.feature_importances_
+            for feature, importance in zip(selected_features, importances):
+                feature_type = 'continuous' if feature in numeric_cols else 'binary'
+                
+                self.model_coefficients.append({
+                    'cv_id': cv_id,
+                    'repeat': repeat_id,
+                    'fold': fold_id,
+                    'feature_name': feature,
+                    'coefficient': float(importance),  # Store as 'coefficient' for consistency
+                    'feature_type': feature_type
+                })
+        else:
+            # Model doesn't have coefficients or feature importances
+            print(f"Warning: Model type {type(model)} doesn't have coefficients or feature importances")
     
     def record_predictions(self, cv_id, repeat_id, fold_id, train_data, test_data, 
                           train_predictions, test_predictions, groups):
@@ -335,9 +372,9 @@ class CVDataCollector:
             'selected_features': [],
             'training_completed': False,
             'failure_reason': reason,
-            'best_lambda': None,
-            'best_inner_score': None,
-            'lambda_scores': {}
+            'best_score': None,
+            'best_params': {},
+            'param_scores': {}
         })
         
         self.fold_summaries.append(self._current_fold_info.copy())

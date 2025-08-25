@@ -4,13 +4,14 @@
 
 Script to run nested cross-validation for pneumonitis prediction.
 Handles stability selection, hyperparameter optimization, and model training
-with comprehensive data collection.
+with comprehensive data collection. Supports both Logistic Regression and Random Forest.
 
 Usage:
     python 03_run_nested_cv.py <dataset_file> --analysis {1,2} [options]
 
 Examples:
     python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1
+    python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1 --model random-forest
     python 03_run_nested_cv.py data/simulation/synthetic_easy.xlsx --analysis 1 --experiment pneumonitis_synthetic
     python 03_run_nested_cv.py analysis_1_data.xlsx --analysis 1 --n-splits 5 --n-repeats 5
 """
@@ -27,6 +28,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
 # Import required functions and config
 from pneumonitis_ml.config import (
@@ -124,6 +126,51 @@ def load_and_validate_data(dataset_file, analysis_number):
     return df_data, predictors, target_col, numeric_cols, binary_cols
 
 
+def get_hyperparameter_config(model_type):
+    """
+    Get hyperparameter configuration for different models.
+    
+    Parameters:
+    -----------
+    model_type : str
+        Type of model ('logistic-regression' or 'random-forest')
+    
+    Returns:
+    --------
+    dict : Configuration with model_factory and param_grid
+    """
+    
+    # Import config function here to avoid circular imports
+    from pneumonitis_ml.config import load_hyperparameter_grid
+    
+    if model_type == 'logistic-regression':
+        model_factory = lambda **params: LogisticRegression(
+            penalty='l2',
+            solver='lbfgs', 
+            max_iter=1000,
+            random_state=42,
+            **params
+        )
+        
+    elif model_type == 'random-forest':
+        model_factory = lambda **params: RandomForestClassifier(
+            n_estimators=100,
+            random_state=42,
+            **params
+        )
+        
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+    
+    # Load parameter grid from config
+    param_grid = load_hyperparameter_grid(model_type)
+    
+    return {
+        'model_factory': model_factory,
+        'param_grid': param_grid
+    }
+
+
 def main():
     """Main function to run nested cross-validation."""
     
@@ -132,17 +179,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Run with logistic regression (default)
+  python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1
+
+  # Run with random forest
+  python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1 --model random-forest
+
   # Run with stability selection
   python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1 --use-stability-selection
 
   # Run with univariate selection
   python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1 --use-univariate-selection
-
-  # Run without any feature selection (use all prespecified features)
-  python 03_run_nested_cv.py data/processed/analysis_1_single.xlsx --analysis 1
-
-  # Custom univariate selection parameters
-  python 03_run_nested_cv.py data.xlsx --analysis 1 --use-univariate-selection --univariate-max-features 6 --univariate-p-threshold 0.10
 
   # Test run with minimal iterations
   python 03_run_nested_cv.py data.xlsx --analysis 1 --n-splits 2 --n-repeats 2 --experiment quick_test
@@ -162,6 +209,15 @@ Examples:
         choices=[1, 2],
         required=True,
         help='Analysis number (1 or 2)'
+    )
+    
+    # Model selection
+    parser.add_argument(
+        '--model',
+        type=str,
+        choices=['logistic-regression', 'random-forest'],
+        default='logistic-regression',
+        help='Model type to use (default: logistic-regression)'
     )
     
     # Cross-validation parameters
@@ -228,15 +284,7 @@ Examples:
         help='P-value threshold for univariate feature selection (default: 0.20)'
     )
     
-    # Hyperparameter optimization parameters
-    parser.add_argument(
-        '--lambda-values',
-        nargs='+',
-        type=float,
-        default=[0.001, 0.01, 0.1, 1.0, 10.0],
-        help='Lambda values for hyperparameter search (default: 0.001 0.01 0.1 1.0 10.0)'
-    )
-    
+    # Inner CV parameters
     parser.add_argument(
         '--inner-cv-splits',
         type=int,
@@ -310,7 +358,12 @@ Examples:
     # Generate experiment name if not provided
     if args.experiment is None:
         dataset_name = dataset_file.stem
-        args.experiment = f"{dataset_name}_analysis_{args.analysis}"
+        model_suffix = 'lr' if args.model == 'logistic-regression' else 'rf'
+        args.experiment = f"{dataset_name}_analysis_{args.analysis}_{model_suffix}"
+    
+    # Get model configuration
+    model_config = get_hyperparameter_config(args.model)
+    param_grid = model_config['param_grid']
     
     # Print configuration
     print("="*60)
@@ -318,6 +371,7 @@ Examples:
     print("="*60)
     print(f"Dataset: {dataset_file}")
     print(f"Analysis: {args.analysis}")
+    print(f"Model: {args.model}")
     print(f"Experiment: {args.experiment}")
     print(f"CV: {args.n_repeats} repeats × {args.n_splits} splits")
     print(f"Use stability selection: {args.use_stability_selection}")
@@ -326,7 +380,7 @@ Examples:
     print(f"Use univariate selection: {args.use_univariate_selection}")
     if args.use_univariate_selection:
         print(f"Univariate selection: max {args.univariate_max_features} features, p < {args.univariate_p_threshold}")
-    print(f"Lambda values: {args.lambda_values}")
+    print(f"Hyperparameters: {param_grid}")
     print(f"Inner CV: {args.inner_cv_repeats} repeats × {args.inner_cv_splits} splits")
     print(f"Output directory: {output_dir}")
     print(f"Random seed: {args.seed}")
@@ -364,6 +418,7 @@ Examples:
         collector.set_experiment_metadata(
             dataset_file=str(dataset_file),
             analysis_number=args.analysis,
+            model_type=args.model,
             n_splits=args.n_splits,
             n_repeats=args.n_repeats,
             total_samples=len(df_data),
@@ -383,7 +438,7 @@ Examples:
             univariate_max_features=args.univariate_max_features if args.use_univariate_selection else None,
             univariate_p_threshold=args.univariate_p_threshold if args.use_univariate_selection else None,
             # Hyperparameter optimization settings
-            lambda_values=args.lambda_values,
+            hyperparameter_grid=param_grid,
             inner_cv_splits=args.inner_cv_splits,
             inner_cv_repeats=args.inner_cv_repeats,
             # General settings
@@ -398,10 +453,14 @@ Examples:
             ("imp", SimpleImputer(strategy="median")),
             ("scal", StandardScaler())
         ])
+
+        binary_pipe = Pipeline([
+            ("imp", SimpleImputer(strategy="most_frequent"))
+        ])
         
         preprocess = ColumnTransformer([
             ("num", numeric_pipe, numeric_cols),
-            ("bin", "passthrough", binary_cols)
+            ("bin", binary_pipe, binary_cols)
         ])
         
         # Prepare data for cross-validation
@@ -409,7 +468,7 @@ Examples:
         y = df_data[target_col]
         groups = df_data['patient_id']
         
-        print(f"\nStarting {args.n_repeats} × {args.n_splits}-fold nested cross-validation")
+        print(f"\nStarting {args.n_repeats} x {args.n_splits}-fold nested cross-validation")
         print(f"Total samples: {len(X)}, Total patients: {groups.nunique()}")
         print(f"Target prevalence: {y.mean():.3f}")
         print("-" * 60)
@@ -531,7 +590,7 @@ Examples:
                         collector.fail_fold(cv_id=cv_id, reason=f"Stability selection failed: {str(e)}")
                         continue
                 else:
-                    print(f"    Using all features (no stability selection)")
+                    print(f"    Using all features (no feature selection)")
                     selected_features = list(feature_names)
                     # Create dummy selection frequencies (all features selected with frequency 1.0)
                     selection_frequencies = np.ones(len(feature_names))
@@ -550,7 +609,7 @@ Examples:
                 if args.verbose and len(selected_features) > 0:
                     print(f"    Selected features: {list(selected_features)}")
                 
-                # Check if any features were selected (should only happen with stability selection)
+                # Check if any features were selected
                 if len(selected_features) == 0:
                     print(f"    No features selected - marking fold as failed")
                     collector.fail_fold(cv_id=cv_id, reason="No features selected")
@@ -564,13 +623,15 @@ Examples:
                         y_train=y_train,
                         groups_train=groups_train,
                         selected_features=selected_features,
-                        lambda_values=args.lambda_values,
+                        model_factory=model_config['model_factory'],
+                        param_grid=param_grid,
                         n_splits=args.inner_cv_splits,
                         n_repeats=args.inner_cv_repeats,
-                        random_state=args.seed + repeat * 1000 + fold * 10
+                        random_state=args.seed + repeat * 1000 + fold * 10,
+                        verbose=args.verbose
                     )
                     
-                    best_lambda = hyperopt_results['best_lambda']
+                    best_params = hyperopt_results['best_params']
                     best_inner_score = hyperopt_results['best_score']
                     
                 except Exception as e:
@@ -584,26 +645,19 @@ Examples:
                 # Record hyperparameter results
                 collector.record_hyperparameter_results(
                     cv_id=cv_id,
-                    best_lambda=best_lambda,
                     best_score=best_inner_score,
-                    all_scores=hyperopt_results['all_scores']
+                    all_scores=hyperopt_results['all_scores'],
+                    best_params=best_params
                 )
                 
-                print(f"    Best λ: {best_lambda}, Inner CV score: {best_inner_score:.4f}")
+                print(f"    Best params: {best_params}, Inner CV score: {best_inner_score:.4f}")
                 
                 # FINAL MODEL TRAINING
                 print(f"    Training final model...")
                 
                 try:
-                    # Train final model with best hyperparameters
-                    safe_lambda = max(best_lambda, 1e-6)
-                    final_model = LogisticRegression(
-                        penalty='l2',
-                        C=1/safe_lambda,
-                        solver='lbfgs',
-                        max_iter=1000,
-                        random_state=args.seed
-                    )
+                    # Create final model with best hyperparameters using the same factory
+                    final_model = model_config['model_factory'](**best_params)
                     
                     # Use selected features
                     X_train_selected = X_train_df[selected_features]
@@ -612,7 +666,7 @@ Examples:
                     # Fit final model
                     final_model.fit(X_train_selected, y_train)
                     
-                    # Record model coefficients
+                    # Record model coefficients (for logistic regression) or feature importances (for random forest)
                     collector.record_model_coefficients(
                         cv_id=cv_id,
                         repeat_id=repeat_id,

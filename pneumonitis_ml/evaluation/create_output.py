@@ -31,10 +31,10 @@ def create_publication_tables(results, metadata):
         'Value': [
             f"{perf['auroc']['mean']:.3f}",
             f"{perf['auprc']['mean']:.3f}",
-            f"{cm['sensitivity']:.3f}",
-            f"{cm['specificity']:.3f}",
-            f"{cm['ppv']:.3f}",
-            f"{cm['npv']:.3f}",
+            f"{cm['sensitivity']['mean']:.3f}",
+            f"{cm['specificity']['mean']:.3f}",
+            f"{cm['ppv']['mean']:.3f}",
+            f"{cm['npv']['mean']:.3f}",
             f"{cm['threshold']:.3f}",
             f"{cm['youden_score']:.3f}",
             f"{calib['brier_score']:.3f}",
@@ -43,7 +43,14 @@ def create_publication_tables(results, metadata):
         'CI_95': [
             f"({perf['auroc']['ci_lower']:.3f}-{perf['auroc']['ci_upper']:.3f})",
             f"({perf['auprc']['ci_lower']:.3f}-{perf['auprc']['ci_upper']:.3f})",
-            "-", "-", "-", "-", "-", "-", "-", "-"
+            f"({cm['sensitivity']['ci_lower']:.3f}-{cm['sensitivity']['ci_upper']:.3f})",
+            f"({cm['specificity']['ci_lower']:.3f}-{cm['specificity']['ci_upper']:.3f})",
+            f"({cm['ppv']['ci_lower']:.3f}-{cm['ppv']['ci_upper']:.3f})",
+            f"({cm['npv']['ci_lower']:.3f}-{cm['npv']['ci_upper']:.3f})",
+            "-",  # threshold itself usually has no CI
+            "-",  # Youden score ditto
+            f"({calib['brier_ci_lower']:.3f}-{calib['brier_ci_upper']:.3f})",
+            f"({calib['slope_ci_lower']:.3f}-{calib['slope_ci_upper']:.3f})"
         ],
         'Notes': [
             "Bootstrap CI",
@@ -215,78 +222,112 @@ def create_publication_figures(results, output_dir, experiment_name):
     return figures
 
 def generate_text_summary(results, metadata, tables, output_file):
-    """Generate a comprehensive text summary for the paper."""
-    
-    with open(output_file, 'w') as f:
-        f.write("="*80 + "\n")
+    """
+    Write a plain-text summary of the cross-validation results that can be
+    copied into the manuscript or supplement.
+    """
+    with open(output_file, "w") as f:
+        f.write("=" * 80 + "\n")
         f.write("COMPREHENSIVE CROSS-VALIDATION RESULTS SUMMARY\n")
-        f.write("="*80 + "\n\n")
-        
-        # Experiment Information
-        if 'experiment_info' in metadata:
-            exp_info = metadata['experiment_info']
+        f.write("=" * 80 + "\n\n")
+
+        # ---------------------------------------------------------------------
+        # 1. Experiment-level information
+        # ---------------------------------------------------------------------
+        if "experiment_info" in metadata:
+            exp = metadata["experiment_info"]
             f.write("EXPERIMENT CONFIGURATION\n")
             f.write("-" * 40 + "\n")
-            f.write(f"Experiment Name: {exp_info.get('name', 'Unknown')}\n")
-            f.write(f"Analysis: {exp_info.get('analysis_number', 'Unknown')}\n")
-            f.write(f"Dataset: {Path(exp_info.get('dataset_file', 'Unknown')).name}\n")
-            f.write(f"Cross-Validation: {exp_info.get('n_repeats', 'Unknown')} repeats × {exp_info.get('n_splits', 'Unknown')} folds\n")
-            f.write(f"Stability Selection: {exp_info.get('use_stability_selection', 'Unknown')}\n")
-            if exp_info.get('use_stability_selection'):
-                f.write(f"  - Threshold: {exp_info.get('stability_threshold', 'Unknown')}\n")
-                f.write(f"  - Iterations: {exp_info.get('stability_iterations', 'Unknown')}\n")
-            f.write(f"Total Samples: {exp_info.get('total_samples', 'Unknown')}\n")
-            f.write(f"Total Patients: {exp_info.get('total_patients', 'Unknown')}\n")
-            f.write(f"Target Prevalence: {exp_info.get('target_prevalence', 'Unknown'):.3f}\n")
-            f.write(f"Random Seed: {exp_info.get('random_seed', 'Unknown')}\n\n")
-        
-        # Main Results (for paper text)
-        perf = results['performance_metrics']
-        calib = results['calibration']
-        cm = results['classification_metrics']
-        
-        f.write("MAIN RESULTS\n")
+            f.write(f"Experiment Name : {exp.get('name', '—')}\n")
+            f.write(f"Analysis        : {exp.get('analysis_number', '—')}\n")
+            f.write(f"Dataset         : {Path(exp.get('dataset_file', '—')).name}\n")
+            f.write(f"CV              : {exp.get('n_repeats', '—')} repeats × "
+                    f"{exp.get('n_splits', '—')} folds\n")
+            f.write(f"Stability Sel.  : {exp.get('use_stability_selection', '—')}\n")
+            if exp.get('use_stability_selection'):
+                f.write(f"  · Threshold   : {exp.get('stability_threshold', '—')}\n")
+                f.write(f"  · Iterations  : {exp.get('stability_iterations', '—')}\n")
+            f.write(f"Total Samples   : {exp.get('total_samples', '—')}\n")
+            f.write(f"Total Patients  : {exp.get('total_patients', '—')}\n")
+            f.write(f"Target Prev.    : {exp.get('target_prevalence', 0):.3f}\n")
+            f.write(f"Random Seed     : {exp.get('random_seed', '—')}\n\n")
+
+        # ---------------------------------------------------------------------
+        # 2. Main discrimination metrics
+        # ---------------------------------------------------------------------
+        perf  = results["performance_metrics"]
+        calib = results["calibration"]
+        cm    = results["classification_metrics"]
+
+        f.write("MAIN PERFORMANCE METRICS\n")
         f.write("-" * 40 + "\n")
-        f.write(f"AUROC: {perf['auroc']['mean']:.3f} (95% CI: {perf['auroc']['ci_lower']:.3f}-{perf['auroc']['ci_upper']:.3f})\n")
-        f.write(f"AUPRC: {perf['auprc']['mean']:.3f} (95% CI: {perf['auprc']['ci_lower']:.3f}-{perf['auprc']['ci_upper']:.3f})\n\n")
-        
-        f.write("CLASSIFICATION PERFORMANCE (YOUDEN-OPTIMAL THRESHOLD)\n")
-        f.write(f"Optimal Threshold: {cm['threshold']:.3f} ({cm['threshold_method']} method)\n")
-        f.write(f"Youden Score (J): {cm['youden_score']:.3f}\n")
-        f.write(f"Sensitivity: {cm['sensitivity']:.3f}\n")
-        f.write(f"Specificity: {cm['specificity']:.3f}\n")
-        f.write(f"PPV: {cm['ppv']:.3f}\n")
-        f.write(f"NPV: {cm['npv']:.3f}\n\n")
-        
-        f.write("CALIBRATION METRICS\n")
-        f.write(f"Brier Score: {calib['brier_score']:.3f}\n")
-        f.write(f"Calibration Slope: {calib['calibration_slope']:.3f}\n")
-        f.write(f"Calibration Intercept: {calib['calibration_intercept']:.3f}\n\n")
-        
-        # Feature Selection Summary
-        if 'feature_selection' in results:
-            fold_stats = results['fold_analysis']['summary_stats']
-            f.write("FEATURE SELECTION SUMMARY\n")
+        f.write("• Discrimination\n")
+        f.write(f"  AUROC : {perf['auroc']['mean']:.3f} "
+                f"(95 % CI {perf['auroc']['ci_lower']:.3f}"
+                f"–{perf['auroc']['ci_upper']:.3f})\n")
+        f.write(f"  AUPRC : {perf['auprc']['mean']:.3f} "
+                f"(95 % CI {perf['auprc']['ci_lower']:.3f}"
+                f"–{perf['auprc']['ci_upper']:.3f})\n\n")
+
+        # ---------------------------------------------------------------------
+        # 3. Threshold-based metrics
+        # ---------------------------------------------------------------------
+        f.write(f"• Classification at {cm['threshold_method'].title()} "
+                f"threshold (p ≥ {cm['threshold']:.3f})\n")
+        f.write(f"  Sensitivity : {cm['sensitivity']['mean']:.3f} "
+                f"(95 % CI {cm['sensitivity']['ci_lower']:.3f}"
+                f"–{cm['sensitivity']['ci_upper']:.3f})\n")
+        f.write(f"  Specificity : {cm['specificity']['mean']:.3f} "
+                f"(95 % CI {cm['specificity']['ci_lower']:.3f}"
+                f"–{cm['specificity']['ci_upper']:.3f})\n")
+        f.write(f"  PPV         : {cm['ppv']['mean']:.3f} "
+                f"(95 % CI {cm['ppv']['ci_lower']:.3f}"
+                f"–{cm['ppv']['ci_upper']:.3f})\n")
+        f.write(f"  NPV         : {cm['npv']['mean']:.3f} "
+                f"(95 % CI {cm['npv']['ci_lower']:.3f}"
+                f"–{cm['npv']['ci_upper']:.3f})\n")
+        f.write(f"  Youden J    : {cm['youden_score']:.3f}\n\n")
+
+        # ---------------------------------------------------------------------
+        # 4. Calibration
+        # ---------------------------------------------------------------------
+        f.write("• Calibration\n")
+        f.write(f"  Brier score        : {calib['brier_score']:.3f} "
+                f"(95 % CI {calib['brier_ci_lower']:.3f}"
+                f"–{calib['brier_ci_upper']:.3f})\n")
+        f.write(f"  Calibration slope  : {calib['calibration_slope']:.3f} "
+                f"(95 % CI {calib['slope_ci_lower']:.3f}"
+                f"–{calib['slope_ci_upper']:.3f})\n")
+        f.write(f"  Calibration offset : {calib['calibration_intercept']:.3f} "
+                f"(95 % CI {calib['intercept_ci_lower']:.3f}"
+                f"–{calib['intercept_ci_upper']:.3f})\n\n")
+
+        # ---------------------------------------------------------------------
+        # 5. Feature-selection overview (unchanged)
+        # ---------------------------------------------------------------------
+        if "feature_selection" in results:
+            stats = results["fold_analysis"]["summary_stats"]
+            f.write("FEATURE-SELECTION SUMMARY\n")
             f.write("-" * 40 + "\n")
-            f.write(f"Valid CV Folds: {fold_stats['n_valid_folds']}/{fold_stats['n_total_folds']}\n")
-            f.write(f"Mean Features Selected: {fold_stats['mean_features_selected']:.1f} ± {fold_stats['std_features_selected']:.1f}\n\n")
-            
-            # Top features
-            feat_sel = results['feature_selection']['summary']
-            top_features = feat_sel.sort_values('mean_selection_freq', ascending=False).head(5)
-            f.write("TOP 5 SELECTED FEATURES:\n")
-            for i, (feature, row) in enumerate(top_features.iterrows(), 1):
-                f.write(f"{i}. {feature} (selected {row['selection_rate']:.1%} of folds)\n")
+            f.write(f"Valid folds : {stats['n_valid_folds']}"
+                    f"/{stats['n_total_folds']}\n")
+            f.write(f"Mean #features selected : "
+                    f"{stats['mean_features_selected']:.1f} "
+                    f"± {stats['std_features_selected']:.1f}\n\n")
+
+            top5 = (results["feature_selection"]["summary"]
+                    .sort_values("mean_selection_freq", ascending=False)
+                    .head(5))
+            f.write("Top-5 selected predictors:\n")
+            for i, (feat, row) in enumerate(top5.iterrows(), 1):
+                f.write(f"  {i}. {feat} "
+                        f"({row['selection_rate']:.1%} of folds)\n")
             f.write("\n")
-        
-        # Performance by Fold (brief summary)
-        fold_perf = results['fold_analysis']['fold_performance']
-        if len(fold_perf) > 0:
-            f.write("CROSS-VALIDATION STABILITY\n")
-            f.write("-" * 40 + "\n")
-            f.write(f"All {len(fold_perf)} folds completed successfully\n")
-            f.write(f"Feature selection range: {fold_perf['n_features_selected'].min()}-{fold_perf['n_features_selected'].max()} features\n\n")
-        
-        f.write("="*80 + "\n")
-        f.write(f"Summary generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("="*80 + "\n")
+
+        # ---------------------------------------------------------------------
+        # 6. Footer
+        # ---------------------------------------------------------------------
+        f.write("=" * 80 + "\n")
+        f.write(f"Summary generated on "
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 80 + "\n")

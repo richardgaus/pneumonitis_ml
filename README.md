@@ -2,7 +2,7 @@
 
 This repository contains all code and synthetic data for the study
 
-> **“Regularised logistic‐regression models for predicting grade ≥ 2 radiation pneumonitis after lung SBRT”**
+> **“XXX”**
 
 The workflow covers every step from raw Excel exports to publication-ready figures:
 
@@ -14,8 +14,6 @@ The workflow covers every step from raw Excel exports to publication-ready figur
 
 All real patient data stay local (the `data/raw/` folder is in `.gitignore`).  
 The repo ships with purely synthetic datasets so anyone can run the pipeline end-to-end.
-
----
 
 ## Quick start
 
@@ -40,8 +38,6 @@ python scripts/04_analyze_results.py \
 ```
 
 Full command-line examples are embedded in each script’s help text (`-h`).
-
----
 
 ## Repository layout
 
@@ -72,8 +68,6 @@ environment.yml             conda spec (Python 3.11)
 | **Sensitivity analyses**  | (i) lesion- vs patient-level splitting, (ii) alternative feature-selection strategies    |
 
 All settings can be overridden from the CLI; defaults follow TRIPOD-AI guidance.
-
----
 
 ## How to cite
 

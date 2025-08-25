@@ -8,6 +8,7 @@ data/raw/
 data/processed/
 results/raw_cv_results/
 results/analyzed_cv_results/
+figures/
 # keep empty dirs:
 !.gitkeep
 
